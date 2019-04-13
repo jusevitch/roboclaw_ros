@@ -183,7 +183,7 @@ class Node:
         self.encodm = EncoderOdom(self.TICKS_PER_METER, self.BASE_WIDTH)
         self.last_set_speed_time = rospy.get_rostime()
 
-        rospy.Subscriber("cmd_vel", Twist, self.cmd_vel_callback)
+        rospy.Subscriber("cmd_vel", Twist, self.cmd_vel_callback, queue_size=1) # JU Added queue_size; default is infinite
 
         rospy.sleep(1)
 
@@ -196,12 +196,13 @@ class Node:
 
     def run(self):
         rospy.loginfo("Starting motor drive")
-        r_time = rospy.Rate(10)
+        r_time = rospy.Rate(200) #JU originally 10
         while not rospy.is_shutdown():
 
             if (rospy.get_rostime() - self.last_set_speed_time).to_sec() > 1:
-                rospy.loginfo("Did not get command for 1 second, stopping")
+                # rospy.loginfo("Did not get command for 1 second, stopping")
                 try:
+                    # rospy.loginfo("This worked line 205") # JU
                     roboclaw.ForwardM1(self.address, 0)
                     roboclaw.ForwardM2(self.address, 0)
                 except OSError as e:
@@ -229,14 +230,17 @@ class Node:
                 rospy.logdebug(e)
 
             if ('enc1' in vars()) and ('enc2' in vars()):
-                rospy.logdebug(" Encoders %d %d" % (enc1, enc2))
-                self.encodm.update_publish(enc1, enc2)
+                if (enc1 != None) and (enc2 != None): # JU
+		    rospy.logdebug(" Encoders %d %d" % (enc1, enc2))
+                    self.encodm.update_publish(enc1, enc2) # JU, This simply sends the encoder values to a function which calcs velocity and publishes to /odom topic
 
                 self.updater.update()
             r_time.sleep()
 
     def cmd_vel_callback(self, twist):
         self.last_set_speed_time = rospy.get_rostime()
+
+        rospy.loginfo("Velocity, angle: [%f , %f]", twist.linear.x, twist.angular.z) # JU
 
         linear_x = twist.linear.x
         if linear_x > self.MAX_SPEED:
@@ -258,7 +262,7 @@ class Node:
                 roboclaw.ForwardM1(self.address, 0)
                 roboclaw.ForwardM2(self.address, 0)
             else:
-                roboclaw.SpeedM1M2(self.address, vr_ticks, vl_ticks)
+                roboclaw.SpeedM1M2(self.address, vr_ticks, vl_ticks) # JU I believe this sends the velocity command to the low level hardware
         except OSError as e:
             rospy.logwarn("SpeedM1M2 OSError: %d", e.errno)
             rospy.logdebug(e)
